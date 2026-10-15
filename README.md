@@ -1,6 +1,6 @@
 # dead-deps-gauge
 
-[![npm version](https://img.shields.io/npm/v/dead-deps-gauge.svg)](https://www.npmjs.com/package/dead-deps-gauge) [![CI](https://github.com/MrLouisWright/dead-deps-gauge/actions/workflows/ci.yml/badge.svg)](https://github.com/MrLouisWright/dead-deps-gauge/actions/workflows/ci.yml) [![Node](https://img.shields.io/node/v/dead-deps-gauge.svg)](https://nodejs.org) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![npm version](https://img.shields.io/npm/v/dead-deps-gauge.svg)](https://www.npmjs.com/package/dead-deps-gauge) [![CI](https://github.com/MrLouisWright/dead-deps-gauge/actions/workflows/ci.yml/badge.svg)](https://github.com/MrLouisWright/dead-deps-gauge/actions/workflows/ci.yml) [![Node](https://img.shields.io/node/v/dead-deps-gauge.svg)](https://nodejs.org) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE) [![provenance](https://img.shields.io/badge/npm-provenance-blue)](https://docs.npmjs.com/generating-provenance-statements)
 
 > Find dependencies you declare but never use, and imports that are missing from package.json.
 
@@ -181,3 +181,38 @@ Free to use under MIT, no attribution required. If dead-deps-gauge helps you, a 
 ## Licence
 
 MIT © Louis Wright ([Louis Wright](https://github.com/MrLouisWright))
+
+## Framework plugins, aliases and `--fix`
+
+Frameworks load packages that no `import` mentions. Built-in plugins understand them, so they are not reported as unused:
+
+| Plugin | What it reads |
+|---|---|
+| next | `next` implies `react` and `react-dom` |
+| jsx | `.jsx`/`.tsx` files use `react`, `preact` or `solid-js` through the automatic JSX runtime |
+| vite | `vite.config.*` / `vitest.config.*`: `environment: 'jsdom' \| 'happy-dom'`, `coverage.provider`, browser mode |
+| jest | `jest.config.*` or `"jest"` in package.json: `testEnvironment`, `preset`, `transform` |
+| eslint | `eslint.config.*` flat-config packages |
+| storybook | `.storybook/main.*` `addons` and `framework` |
+| postcss | `postcss.config.*` plugin objects (`{ autoprefixer: {} }`) |
+
+Disable with `--no-plugins`, or choose with `"plugins": ["next", "jest"]` in the config.
+
+Imports matching tsconfig/jsconfig `compilerOptions.paths` (including through `extends`) and `#subpath` imports are not packages. In a workspace, a missing sibling package gets a `workspace:*` fix.
+
+```bash
+npx dead-deps-gauge --fix --dry-run   # show what would be removed
+npx dead-deps-gauge --fix             # remove unused (dev/optional) dependencies from package.json
+```
+
+## Module formats and types
+
+Ships ESM (`import`) and a bundled CommonJS build (`require`), with TypeScript declarations generated from the source:
+
+```js
+import * as lib from 'dead-deps-gauge';      // ESM
+const lib = require('dead-deps-gauge');      // CommonJS
+```
+
+Tests live in [`test/`](test) and run on Node 18, 20 and 22 in [GitHub Actions](https://github.com/MrLouisWright/dead-deps-gauge/actions/workflows/ci.yml), including a require+import check. Releases are published with `npm publish --provenance`.
+

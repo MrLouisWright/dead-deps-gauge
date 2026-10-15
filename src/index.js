@@ -3,6 +3,9 @@ import { join, relative, extname, basename, dirname, resolve } from 'node:path';
 import { extractImports, packageName, BUILTIN_NAMES } from './imports.js';
 import { globToRe, matchAny } from './glob.js';
 import { buildReport, UsageError } from './core.js';
+import { frameworkUsages, pathAliases, workspacePackages, fixPackageJson, PLUGINS, parseJsonc } from './plugins.js';
+
+export { frameworkUsages, pathAliases, workspacePackages, fixPackageJson, PLUGINS };
 
 export { extractImports, packageName, globToRe };
 export * from './core.js';
@@ -114,18 +117,21 @@ export function analyze(dir, opts = {}) {
   const prodGlobs = opts.prodPaths || [];
   const files = walk(dir, dir, ignore, []);
   const usage = new Map(); // name -> { prod: [{file,line}], dev: [...] , typeOnly }
-  const use = (name, file, line, isDev, typeOnly = false) => { if (!name || name === pkg.name) return; let u = usage.get(name); if (!u) { u = { prod: [], dev: [], typeOnly: true }; usage.set(name, u); } (isDev ? u.dev : u.prod).push({ file, line }); if (!typeOnly) u.typeOnly = false; };
+  const use = (name, file, line, isDev, typeOnly = false, explicit = false) => { if (!name || name === pkg.name) return; let u = usage.get(name); if (!u) { u = { prod: [], dev: [], typeOnly: true }; usage.set(name, u); } (isDev ? u.dev : u.prod).push({ file, line, explicit }); if (!typeOnly) u.typeOnly = false; };
   // when package.json "files" exists, anything not published is dev-only
   const published = Array.isArray(pkg.files) ? pkg.files.flatMap((g) => { const x = String(g).replace(/^\.\//, '').replace(/\/$/, ''); return /[*?{]/.test(x) ? [x] : [x, `${x}/**`]; }) : null;
   const isDevFile = (f) => !matchAny(f, prodGlobs) && (matchAny(f, devGlobs) || (published !== null && !published.some((g) => globToRe(g).test(f))));
   let tsFiles = 0;
+  const aliased = pathAliases(dir);
+  const wsPkgs = workspacePackages(root);
+  const subpathImport = (s) => s.startsWith('#');
   for (const f of files) {
     let src; try { src = readFileSync(join(dir, f), 'utf8'); } catch { continue; }
     if (src.length > 2e6) continue;
     const isDev = isDevFile(f);
     if (/\.(m|c)?tsx?$/.test(f)) tsFiles++;
     if (/\.(json|ya?ml)$/.test(f) || /^\.[\w-]+rc$/.test(basename(f))) { for (const r of configRefs(basename(f), src)) use(r, f, 1, true); continue; }
-    for (const im of extractImports(src)) use(packageName(im.spec), f, im.line, isDev, im.typeOnly);
+    for (const im of extractImports(src)) { if (aliased(im.spec) || subpathImport(im.spec)) continue; use(packageName(im.spec), f, im.line, isDev, im.typeOnly); }
     if (/\.config\.|^\.[\w-]+rc\./.test(basename(f))) for (const r of configRefs(basename(f), src)) if (declared.has(r)) use(r, f, 1, true);
   }
   // root-level implicit tools
@@ -136,6 +142,8 @@ export function analyze(dir, opts = {}) {
   for (const [k, kind] of [['eslintConfig', '.eslintrc'], ['babel', '.babelrc'], ['prettier', '.prettierrc'], ['jest', 'jest.config.json'], ['commitlint', '.commitlintrc'], ['stylelint', '.stylelintrc']]) if (pkg[k]) { use(k === 'eslintConfig' ? 'eslint' : k === 'babel' ? '@babel/core' : k === 'commitlint' ? '@commitlint/cli' : k, 'package.json', 1, true); for (const r of configRefs(kind, JSON.stringify(pkg[k]))) use(r, 'package.json', 1, true); }
   if (pkg['lint-staged']) use('lint-staged', 'package.json', 1, true);
   if (typeof pkg.prettier === 'string') use(pkg.prettier, 'package.json', 1, true);
+  // framework plugins (Next, Vite/Vitest, Jest, ESLint flat config, Storybook, PostCSS, JSX runtimes)
+  if (opts.plugins !== false) for (const u of frameworkUsages({ dir, pkg, files, declared, isDevFile }, Array.isArray(opts.plugins) ? opts.plugins : undefined)) use(u.name, u.file, 1, u.dev, false, true);
   // scripts
   const bins = binMap(dir, [...declared]);
   for (const [name, script] of Object.entries(pkg.scripts || {})) {
@@ -166,11 +174,12 @@ export function analyze(dir, opts = {}) {
     if (u.typeOnly && (declared.has(typesPkg) || rootDeclared.has(typesPkg))) continue;
     const at = (u.prod[0] || u.dev[0]);
     if (u.prod.length && !u.typeOnly) {
-      if (!declared.has(name)) add('missing-dependency', name, `"${name}" is used by ${at.file}${at.line > 1 ? ':' + at.line : ''}${u.prod.length > 1 ? ` (+${u.prod.length - 1} more)` : ''} but is not in package.json`, `${pm} ${name}  (it only works today through hoisting or a transitive install)`, at);
+      if (!declared.has(name) && wsPkgs.has(name)) add('missing-dependency', name, `"${name}" is used by ${at.file}${at.line > 1 ? ':' + at.line : ''} but is not in package.json (it is the workspace package in ${wsPkgs.get(name)})`, `Add "${name}": "workspace:*" (pnpm/yarn) or "*" (npm) to dependencies.`, at);
+      else if (!declared.has(name)) add('missing-dependency', name, `"${name}" is used by ${at.file}${at.line > 1 ? ':' + at.line : ''}${u.prod.length > 1 ? ` (+${u.prod.length - 1} more)` : ''} but is not in package.json`, `${pm} ${name}  (it only works today through hoisting or a transitive install)`, at);
       else if (!prod.includes(name) && !peer.includes(name) && !optional.includes(name)) add('dev-dependency-in-production', name, `"${name}" is used by production code (${at.file}${at.line > 1 ? ':' + at.line : ''}) but is only a devDependency`, `Move it to "dependencies" (${pm} ${name}${pm === 'npm install' ? ' --save-prod' : ''}), or mark the file as dev-only with "devPaths".`, at);
     } else if (!declared.has(name) && !rootDeclared.has(name) && (u.dev.length || u.prod.length)) {
-      const real = u.dev.concat(u.prod).find((x) => x.file !== 'package.json' && x.file !== '(types)' && !IMPLICIT.some(([re]) => re.test(x.file)));
-      if (real && !/\.(json|ya?ml)$|rc$/.test(real.file)) add('missing-dev-dependency', name, `"${name}" is used by ${real.file}${real.line > 1 ? ':' + real.line : ''} but is not declared`, `${pm} -D ${name}`, real);
+      const real = u.dev.concat(u.prod).find((x) => x.explicit || x.file !== 'package.json' && x.file !== '(types)' && !IMPLICIT.some(([re]) => re.test(x.file)));
+      if (real && !real.explicit && !/\.(json|ya?ml)$|rc$/.test(real.file)) add('missing-dev-dependency', name, `"${name}" is used by ${real.file}${real.line > 1 ? ':' + real.line : ''} but is not declared`, `${pm} -D ${name}`, real);
       else if (real) add('missing-dev-dependency', name, `"${name}" is referenced by ${real.file} but is not declared`, `${pm} -D ${name}`, real);
     }
   }
@@ -191,7 +200,7 @@ export function analyze(dir, opts = {}) {
 }
 
 export function check(dir, opts = {}, config = {}, configFile) {
-  const merged = { ignore: [...(config.ignore || []), ...(opts.ignore || [])], ignoreDeps: [...(config.ignoreDeps || []), ...(opts.ignoreDeps || [])], devPaths: [...(config.devPaths || []), ...(opts.devPaths || [])], prodPaths: config.prodPaths };
+  const merged = { ignore: [...(config.ignore || []), ...(opts.ignore || [])], ignoreDeps: [...(config.ignoreDeps || []), ...(opts.ignoreDeps || [])], devPaths: [...(config.devPaths || []), ...(opts.devPaths || [])], prodPaths: config.prodPaths, plugins: opts.plugins ?? config.plugins };
   const { pkg, info, findings } = analyze(dir, merged);
   const tool = { name: 'dead-deps-gauge', version: opts.toolVersion || '1.0.0', rules: RULES, emoji: '🪦', defaultFile: 'package.json' };
   return buildReport(tool, `${pkg.name || 'package'}${pkg.version ? '@' + pkg.version : ''}`, findings, config, { now: opts.now, configFile, summaryLine: `${info.files} file(s) scanned; ${info.dependencies} dependencies, ${info.devDependencies} devDependencies`, info });
