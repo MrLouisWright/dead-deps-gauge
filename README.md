@@ -1,5 +1,7 @@
 # dead-deps-gauge
 
+[![npm version](https://img.shields.io/npm/v/dead-deps-gauge.svg)](https://www.npmjs.com/package/dead-deps-gauge) [![CI](https://github.com/MrLouisWright/dead-deps-gauge/actions/workflows/ci.yml/badge.svg)](https://github.com/MrLouisWright/dead-deps-gauge/actions/workflows/ci.yml) [![Node](https://img.shields.io/node/v/dead-deps-gauge.svg)](https://nodejs.org) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 > Find dependencies you declare but never use, and imports that are missing from package.json.
 
 `dead-deps-gauge` reads every JavaScript and TypeScript file in a package, works out which packages each one imports, and compares that with `package.json`. Code that imports something not in `package.json` (and only works through hoisting), production code that needs a package listed only under `devDependencies`, and dependencies nothing uses all fail the build, each with the file and line and the **exact command to fix it**.
