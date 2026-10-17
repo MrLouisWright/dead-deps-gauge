@@ -1,6 +1,6 @@
 {
   "name": "dead-deps-gauge",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Find dependencies declared in package.json but never imported, and imports missing from package.json (or only in devDependencies). Understands ESM/CJS/TS, dynamic import, scripts, bins, config files and @types. Text/JSON/SARIF/Markdown, allowlist with expiry, GitHub Action. Zero deps.",
   "keywords": [
     "dependencies",

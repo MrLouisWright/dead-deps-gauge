@@ -1,8 +1,10 @@
 # Changelog
 
-## 1.0.0 (2026-10-15)
+## 1.1.0 (2026-10-17)
 
-### Added before first publish
+Re-release: these changes were committed after 1.0.0 was published but never reached npm. 1.0.0 on npm is the original first release.
+
+### Added
 
 - Framework plugins (`--no-plugins` to disable, `plugins` config to pick): Next.js (`react`, `react-dom`), JSX/TSX automatic runtime (`react`, `preact`, `solid-js`), Vite/Vitest (`environment`, coverage provider, browser mode), Jest (`testEnvironment`, presets, transforms in config or package.json), ESLint flat config, Storybook (`.storybook/main` addons and framework), PostCSS plugin objects.
 - tsconfig/jsconfig `paths` aliases (following relative `extends`) and `#subpath` imports are no longer reported as packages.
@@ -14,6 +16,8 @@
 - Dual ESM + CommonJS: `import` loads `src/`, `require` loads a bundled `dist/index.cjs`, via package.json `exports`.
 - TypeScript declarations are generated from the source (`dist/types`) instead of hand-written.
 - CI runs build, tests and a require+import check on Node 18/20/22; releases use `npm publish --provenance`.
+
+## 1.0.0 (2026-10-15)
 
 First release, by Louis Wright.
 
