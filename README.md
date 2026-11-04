@@ -60,7 +60,7 @@ LOW      package.json "fs" has the same name as the Node.js built-in "fs"; impor
 ## Options
 
 ```text
-dead-deps-gauge 1.0.0 — find unused dependencies and imports missing from package.json
+dead-deps-gauge 1.1.0 — find unused dependencies and imports missing from package.json
 
 Usage: dead-deps-gauge [dir] [options]
 
@@ -68,6 +68,9 @@ Scan
       --ignore <globs>       Paths to skip (comma-separated or repeated), e.g. "generated/**"
       --ignore-deps <globs>  Dependencies never to report, e.g. "@company/runtime-*"
       --dev-paths <globs>    Extra globs treated as dev-only (tests, tooling); defaults include test/, scripts/, *.test.*, *.config.*
+      --no-plugins           Disable framework plugins (Next, Vite/Vitest, Jest, ESLint, Storybook, PostCSS, JSX)
+      --fix                  Remove unused dependencies/devDependencies/optionalDependencies from package.json
+      --dry-run              With --fix, print what would be removed without writing
 
 Common
   -c, --config <file>     JSON config (default: .dead-deps-gauge.json or "deadDepsGauge" in package.json)
